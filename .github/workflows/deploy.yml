@@ -28,49 +28,19 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: ${{ secrets.SERVER_PORT || 22 }}
+          command_timeout: 30m
           script: |
             echo "========== 开始部署 =========="
             cd ${{ secrets.DEPLOY_PATH }}
             
-            echo "[1/4] 拉取最新代码..."
+            echo "[1/2] 拉取最新代码..."
             git fetch --all
             git reset --hard origin/main || git reset --hard origin/master
             
-            echo "[2/4] 检查是否有依赖更新..."
-            # Python 项目
-            if [ -f "requirements.txt" ]; then
-                echo "检测到 Python 项目，安装依赖..."
-                pip install -r requirements.txt 2>/dev/null || pip3 install -r requirements.txt
-            fi
+            echo "[2/2] 重启 Docker 容器..."
+            docker compose up -d --build
             
-            # Node.js 项目
-            if [ -f "package.json" ]; then
-                echo "检测到 Node.js 项目，安装依赖..."
-                npm install --production 2>/dev/null || true
-            fi
-            
-            # Go 项目
-            if [ -f "go.mod" ]; then
-                echo "检测到 Go 项目，下载依赖..."
-                go mod download 2>/dev/null || true
-            fi
-            
-            echo "[3/4] 检查是否需要重启服务..."
-            # 如果有 docker-compose.yml，重启容器
-            if [ -f "docker-compose.yml" ] || [ -f "docker-compose.yaml" ]; then
-                echo "检测到 Docker Compose，重启容器..."
-                docker compose down && docker compose up -d --build
-            fi
-            
-            # 如果有自定义部署脚本，执行它
-            if [ -f "deploy.sh" ]; then
-                echo "执行自定义部署脚本..."
-                chmod +x deploy.sh
-                ./deploy.sh
-            fi
-            
-            echo "[4/4] 部署完成！"
-            echo "========== $(date '+%Y-%m-%d %H:%M:%S') =========="
+            echo "========== 部署完成 $(date '+%Y-%m-%d %H:%M:%S') =========="
 
       - name: Notify on failure
         if: failure()
