@@ -1,0 +1,14 @@
+[Unit]
+Description=Drone Logistics FastAPI Backend
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/opt/drone-logistics
+Environment="PATH=/opt/drone-logistics/backend/.venv/bin"
+ExecStart=/opt/drone-logistics/backend/.venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
