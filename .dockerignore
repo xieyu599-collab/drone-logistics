@@ -4,3 +4,8 @@ backend/__pycache__
 __pycache__
 .git
 .gitignore
+.github
+*.md
+*.rtf
+*.log
+export_word_report.py

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, reactive, ref } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from "vue";
 
 const defaults = {
   capacities: "10, 8, 6",
@@ -14,10 +14,12 @@ const form = reactive({
 const loading = ref(false);
 const error = ref("");
 const result = ref(null);
+const elapsedMs = ref(0);
+const resultAnchor = ref(null);
 
 const badges = ["包裹不可拆分", "多机协同装载", "最优重量求解", "装载过程追踪"];
 const systemHighlights = [
-  { label: "算法核心", value: "0-1 背包 + DFS" },
+  { label: "算法核心", value: "贪心 + 记忆化 DFS" },
   { label: "输入规模", value: "最多 5 架 / 50 件" },
   { label: "返回结果", value: "总量、明细、过程" },
 ];
@@ -97,6 +99,24 @@ const dashboardStats = computed(() => {
   });
 });
 
+const validationErrors = computed(() => {
+  const errors = [];
+  const caps = parseNumbers(form.capacities);
+  const pkgs = parseNumbers(form.packages);
+
+  if (!caps.length) errors.push("请输入至少一架无人机载重");
+  else if (caps.length > 5) errors.push(`无人机最多 5 架，当前 ${caps.length} 架`);
+  else if (caps.some((v) => !Number.isInteger(v) || v <= 0)) errors.push("无人机载重必须为正整数");
+
+  if (!pkgs.length) errors.push("请输入至少一个包裹重量");
+  else if (pkgs.length > 50) errors.push(`包裹最多 50 个，当前 ${pkgs.length} 个`);
+  else if (pkgs.some((v) => !Number.isInteger(v) || v <= 0)) errors.push("包裹重量必须为正整数");
+
+  return errors;
+});
+
+const canSubmit = computed(() => !loading.value && validationErrors.value.length === 0);
+
 const fillExample = () => {
   form.capacities = "12, 10, 8, 6";
   form.packages = "7, 6, 5, 4, 4, 3, 2, 2";
@@ -106,27 +126,48 @@ const resetForm = () => {
   form.capacities = defaults.capacities;
   form.packages = defaults.packages;
   error.value = "";
+  result.value = null;
+};
+
+const exportText = () => {
+  if (!result.value) return;
+  const r = result.value;
+  const lines = [
+    "===== 无人机装载优化结果 =====",
+    `最大可装载重量: ${r.max_total}`,
+    `无人机总载重上限: ${r.total_capacity}`,
+    `包裹总重量: ${r.package_total}`,
+    `未配送重量: ${r.undelivered}`,
+    `整体利用率: ${(r.utilization * 100).toFixed(1)}%`,
+    "",
+    "--- 装载明细 ---",
+    ...r.result_rows.map((row) => `${row.drone}: 载重${row.capacity}, 实际${row.actual_load}, 剩余${row.remaining}, 利用率${row.utilization}`),
+    "",
+    `装载方案: ${r.best_load.join(" / ")}`,
+    `无人机容量: ${r.capacities.join(", ")}`,
+    `包裹重量: ${r.packages.join(", ")}`,
+  ];
+  navigator.clipboard.writeText(lines.join("\n"));
 };
 
 const optimize = async () => {
   error.value = "";
 
-  const capacities = parseNumbers(form.capacities);
-  const packages = parseNumbers(form.packages);
-
-  if (!capacities.length || !packages.length || [...capacities, ...packages].some((value) => !Number.isInteger(value) || value <= 0)) {
-    error.value = "请输入正整数，支持空格、英文逗号、中文逗号分隔。";
+  if (validationErrors.value.length > 0) {
+    error.value = validationErrors.value.join("；");
     return;
   }
 
+  const capacities = parseNumbers(form.capacities);
+  const packages = parseNumbers(form.packages);
+
   loading.value = true;
+  const t0 = performance.now();
 
   try {
     const response = await fetch("/api/optimize", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ capacities, packages }),
     });
 
@@ -142,6 +183,10 @@ const optimize = async () => {
     }
 
     result.value = payload;
+    elapsedMs.value = Math.round(performance.now() - t0);
+
+    await nextTick();
+    resultAnchor.value?.scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (requestError) {
     if (requestError instanceof SyntaxError) {
       error.value = "后端返回的不是有效 JSON，请确认后端服务已正常启动。";
@@ -153,6 +198,15 @@ const optimize = async () => {
     loading.value = false;
   }
 };
+
+const onGlobalKeydown = (e) => {
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && canSubmit.value) {
+    optimize();
+  }
+};
+
+onMounted(() => window.addEventListener("keydown", onGlobalKeydown));
+onUnmounted(() => window.removeEventListener("keydown", onGlobalKeydown));
 </script>
 
 <template>
@@ -188,12 +242,19 @@ const optimize = async () => {
       </label>
 
       <div class="actions">
-        <button class="primary" :disabled="loading" @click="optimize">
+        <button class="primary" :disabled="!canSubmit" @click="optimize">
+          <span v-if="loading" class="spinner"></span>
           {{ loading ? "计算中..." : "开始优化" }}
         </button>
         <button class="secondary" :disabled="loading" @click="fillExample">示例数据</button>
         <button class="ghost" :disabled="loading" @click="resetForm">重置</button>
       </div>
+
+      <p class="hint">Ctrl + Enter 快捷计算</p>
+
+      <ul v-if="validationErrors.length && (form.capacities !== defaults.capacities || form.packages !== defaults.packages)" class="validation-hints">
+        <li v-for="msg in validationErrors" :key="msg">{{ msg }}</li>
+      </ul>
 
       <p v-if="error" class="error-text">{{ error }}</p>
     </aside>
@@ -232,6 +293,8 @@ const optimize = async () => {
       </section>
 
       <template v-if="result">
+        <div ref="resultAnchor" class="result-anchor"></div>
+
         <section class="stats-grid">
           <article v-for="item in dashboardStats" :key="item.key" class="stat-card">
             <span>{{ item.label }}</span>
@@ -243,8 +306,11 @@ const optimize = async () => {
         <section class="summary-band">
           <article class="summary-panel summary-panel-primary">
             <span>配送结论</span>
-            <strong>{{ result.undelivered === 0 ? "全部包裹可配送" : `仍有 ${result.undelivered} 重量待分配` }}</strong>
-            <p>当前最优装载为 {{ result.best_load.join(" / ") }}，系统已给出可执行分配结果。</p>
+            <strong>
+              <span v-if="result.undelivered === 0" class="status-ok">✓ 全部包裹可配送</span>
+              <span v-else class="status-warn">仍有 {{ result.undelivered }} 重量待分配</span>
+            </strong>
+            <p>当前最优装载为 {{ result.best_load.join(" / ") }}，计算耗时 {{ elapsedMs }} ms。</p>
           </article>
           <article class="summary-panel">
             <span>任务概览</span>
@@ -346,6 +412,10 @@ const optimize = async () => {
               </tbody>
             </table>
           </div>
+        </section>
+
+        <section class="panel export-bar">
+          <button class="secondary export-btn" @click="exportText">复制结果到剪贴板</button>
         </section>
       </template>
 
