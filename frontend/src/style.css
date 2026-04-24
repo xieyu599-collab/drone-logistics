@@ -113,21 +113,6 @@ code {
   border-color: var(--b2);
 }
 
-/* ==================== Entrance Animations ==================== */
-
-.page-shell,
-.sidebar-card,
-.hero-card,
-.panel,
-.stat-card,
-.summary-panel {
-  animation: rise-in 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.stat-card:nth-child(1) { animation-delay: 0s; }
-.stat-card:nth-child(2) { animation-delay: 0.06s; }
-.stat-card:nth-child(3) { animation-delay: 0.12s; }
-.stat-card:nth-child(4) { animation-delay: 0.18s; }
 
 /* ==================== Sidebar ==================== */
 
@@ -962,17 +947,6 @@ tbody tr:last-child td {
 }
 
 /* ==================== Keyframes ==================== */
-
-@keyframes rise-in {
-  from {
-    opacity: 0;
-    transform: translateY(22px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
 
 @keyframes grow-x {
   from {
